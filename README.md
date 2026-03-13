@@ -15,3 +15,5 @@ Once you’re in, assuming you followed the [instructions](https://github.com/ti
 Before running, make sure to flash the DriveRobotExample_ino3.ino code found inside of the motor library onto the uno R4. Make sure that on the computer you’re flashing the code, you put motor into the arduino libraries folder (C:\Users\user\Documents\Arduino\libraries)
 
 Then do “cd Desktop/acm_robot”, and then “python run_robot.py” (at least assuming that you cloned this repository directly onto your desktop)
+
+Run "python record.py" to record an mp4 of the car following the line for training data. It will save as "run_robot.mp4" in the same folder
