@@ -1,6 +1,6 @@
 **Running Raspberry Pi code remotely:**
 
-If this is the first time this specific Pi has ever been used to SSH, make sure that SSH is enabled. On the raspberry pi, go to a terminal and type “sudo raspi-config”. Go to interface options -> SSH -> yes. Then click on “finish”.
+If this is the first time this specific Pi has ever been used to SSH, make sure that SSH is enabled. On the raspberry pi, go to a terminal and type “sudo raspi-config”. Go to interface options -> SSH -> yes. Then click on “finish”. You will also want to make sure that you enable serial ports similarly, since this code relies on being able to communicate with the arduino via USB
 
 Then, find the IP address of your Pi. Type “hostname -I”
 
