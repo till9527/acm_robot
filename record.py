@@ -36,8 +36,6 @@ class LocalDummyModel(Model):
         )
 
     def post_process(self, output_tensors):
-        # The library requires this function to exist.
-        # We don't care about detections, so we just return an empty list.
         return []
 
 
@@ -50,20 +48,29 @@ def main():
     out = cv2.VideoWriter("robot_run.mp4", fourcc, fps, (frame_width, frame_height))
 
     # --- 4. VISION & PID SETTINGS ---
-    LOWER_BOUND = np.array([20, 100, 100])
-    UPPER_BOUND = np.array([35, 255, 255])
+    LOWER_YELLOW = np.array([20, 100, 100])
+    UPPER_YELLOW = np.array([35, 255, 255])
 
-    Kp = 0.06
+    LOWER_WHITE = np.array([0, 0, 180])
+    UPPER_WHITE = np.array([180, 50, 255])
+
+    # Settings synced with run_robot.py
+    Kp = 0.1
     Ki = 0.0
-    Kd = 0.0
-    base_speed = 60
+    Kd = 0.05
+
+    base_speed = 100
     TARGET_X = 320
 
     prev_error = 0
     integral = 0
 
+    # --- MEMORY VARIABLE ---
+    yellow_is_right = True
+    LANE_WIDTH_ESTIMATE = 450
+
     print("\n" + "=" * 40)
-    print("🚗 OFFLINE AI CAMERA LINE FOLLOWER IS RUNNING!")
+    print("🚗 OFFLINE AI RECORDING LINE FOLLOWER IS RUNNING!")
     print("🎥 Recording to 'robot_run.mp4'...")
     print("🛑 Press Ctrl+C in the terminal to stop.")
     print("=" * 40 + "\n")
@@ -71,48 +78,79 @@ def main():
     # --- 5. INITIALIZE AI CAMERA & DEPLOY LOCAL MODEL ---
     device = AiCamera(image_size=(frame_width, frame_height), frame_rate=int(fps))
     model = LocalDummyModel()
-    device.deploy(model)  # This prevents the online download
+    device.deploy(model)  # Prevents the online download
 
     try:
         with device as stream:
             for frame in stream:
                 clean_img = frame.image.copy()
 
-                # Write the clean frame to the video file
+                # Write the raw, clean frame to the video file
                 out.write(clean_img)
 
                 # --- 6. IMAGE PROCESSING ---
-                roi = clean_img[340:460, 0:640]
+                roi = clean_img[300:460, 0:640]
                 blurred_roi = cv2.GaussianBlur(roi, (5, 5), 0)
                 hsv_img = cv2.cvtColor(blurred_roi, cv2.COLOR_BGR2HSV)
-                binary_view = cv2.inRange(hsv_img, LOWER_BOUND, UPPER_BOUND)
+
+                mask_yellow = cv2.inRange(hsv_img, LOWER_YELLOW, UPPER_YELLOW)
+                mask_white = cv2.inRange(hsv_img, LOWER_WHITE, UPPER_WHITE)
 
                 kernel = np.ones((5, 5), np.uint8)
-                binary_view = cv2.morphologyEx(binary_view, cv2.MORPH_OPEN, kernel)
-                binary_view = cv2.morphologyEx(binary_view, cv2.MORPH_CLOSE, kernel)
+                mask_yellow = cv2.morphologyEx(mask_yellow, cv2.MORPH_OPEN, kernel)
+                mask_white = cv2.morphologyEx(mask_white, cv2.MORPH_OPEN, kernel)
 
-                # --- 7. CALCULATE MOMENTS & PID ---
-                M = cv2.moments(binary_view)
+                # --- 7. INDEPENDENT COLOR TRACKING ---
+                M_y = cv2.moments(mask_yellow)
+                M_w = cv2.moments(mask_white)
 
-                if M["m00"] > 0:
-                    cx = int(M["m10"] / M["m00"])
-                    error = cx - TARGET_X
+                cx_y = int(M_y["m10"] / M_y["m00"]) if M_y["m00"] > 0 else None
+                cx_w = int(M_w["m10"] / M_w["m00"]) if M_w["m00"] > 0 else None
 
-                    integral += error
-                    derivative = error - prev_error
-                    prev_error = error
+                # --- 8. SMART LANE ESTIMATION ---
+                if cx_y is not None and cx_w is not None:
+                    # We can see both lines! Calculate perfect center.
+                    lane_center = (cx_y + cx_w) // 2
 
-                    turn = (Kp * error) + (Ki * integral) + (Kd * derivative)
+                    # UPDATE MEMORY: Which side is the yellow line on right now?
+                    yellow_is_right = cx_y > cx_w
 
-                    current_speed = base_speed - (abs(error) * 0.05)
-                    current_speed = max(60, current_speed)
+                elif cx_y is not None:
+                    # We can only see Yellow (White disappeared on a turn)
+                    if yellow_is_right:
+                        lane_center = cx_y - (LANE_WIDTH_ESTIMATE // 2)
+                    else:
+                        lane_center = cx_y + (LANE_WIDTH_ESTIMATE // 2)
 
-                    left_speed = int(current_speed + turn)
-                    right_speed = int(current_speed - turn)
+                elif cx_w is not None:
+                    # We can only see White (Yellow disappeared on a turn)
+                    if yellow_is_right:  # If yellow is right, white must be left
+                        lane_center = cx_w + (LANE_WIDTH_ESTIMATE // 2)
+                    else:
+                        lane_center = cx_w - (LANE_WIDTH_ESTIMATE // 2)
+                else:
+                    lane_center = TARGET_X
 
-                    left_speed = max(0, min(100, left_speed))
-                    right_speed = max(0, min(100, right_speed))
+                # --- 9. CALCULATE ERROR & PID ---
+                error = lane_center - TARGET_X
 
+                integral += error
+                derivative = error - prev_error
+                prev_error = error
+
+                turn = (Kp * error) + (Ki * integral) + (Kd * derivative)
+
+                # --- 10. CORNER BRAKING ---
+                current_speed = base_speed - (abs(error) * 0.15)
+                current_speed = max(40, current_speed)
+
+                left_speed = int(current_speed + turn)
+                right_speed = int(current_speed - turn)
+
+                left_speed = max(0, min(100, left_speed))
+                right_speed = max(0, min(100, right_speed))
+
+                if cx_y is not None or cx_w is not None:
                     command = f"{left_speed},{right_speed}\n".encode()
                 else:
                     command = b"0,0\n"
