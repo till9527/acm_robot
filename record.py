@@ -55,11 +55,11 @@ def main():
     UPPER_WHITE = np.array([180, 50, 255])
 
     # Settings synced with run_robot.py
-    Kp = 0.1
+    Kp = 0.2
     Ki = 0.0
-    Kd = 0.05
+    Kd = 0.1
 
-    base_speed = 100
+    base_speed = 80
     TARGET_X = 320
 
     prev_error = 0
@@ -141,8 +141,7 @@ def main():
                 turn = (Kp * error) + (Ki * integral) + (Kd * derivative)
 
                 # --- 10. CORNER BRAKING ---
-                current_speed = base_speed - (abs(error) * 0.15)
-                current_speed = max(40, current_speed)
+                current_speed = max(40, base_speed)
 
                 left_speed = int(current_speed + turn)
                 right_speed = int(current_speed - turn)

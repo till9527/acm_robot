@@ -64,11 +64,11 @@ def generate_frames():
     UPPER_WHITE = np.array([180, 50, 255])
 
     # --- PID SETUP (Tuned for sharper turns!) ---
-    Kp = 0.1  # Increased from 0.06 so it steers much harder into corners
+    Kp = 0.2  # Increased from 0.06 so it steers much harder into corners
     Ki = 0.0
-    Kd = 0.05  # Added a little Kd to stop it from wobbling as it exits a turn
+    Kd = 0.1  # Added a little Kd to stop it from wobbling as it exits a turn
 
-    base_speed = 100
+    base_speed = 80
     prev_error = 0
     integral = 0
 
@@ -148,11 +148,12 @@ def generate_frames():
 
             # --- CORNER BRAKING ---
             # Increased penalty from 0.05 to 0.15 so it brakes harder for sharp turns
-            current_speed = base_speed - (abs(error) * 0.15)
-            current_speed = max(
-                40, current_speed
-            )  # Allowed it to slow down to 40 instead of 60
-
+            # current_speed = base_speed - (abs(error) * 0.15)
+            # current_speed = max(
+            #     40, current_speed
+            # )  # Allowed it to slow down to 40 instead of 60
+            # current_speed = base_speed - (abs(error) * 0.15)
+            current_speed = max(40, base_speed)
             left_speed = int(current_speed + turn)
             right_speed = int(current_speed - turn)
 
